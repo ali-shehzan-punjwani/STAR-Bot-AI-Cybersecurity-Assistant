@@ -1,32 +1,40 @@
-# ============================================
-# CYBERSECURITY RAG CHATBOT USING GROQ + GRADIO
-# ============================================
-# Imports
 import os
-import gradio as gr
+import streamlit as st
 import faiss
 import numpy as np
 from groq import Groq
 from sentence_transformers import SentenceTransformer
 
-# ============================================
-# SET YOUR GROQ API KEY
-# ============================================
+# -----------------------------
+# PAGE CONFIG
+# -----------------------------
+st.set_page_config(page_title="STAR AI Cybersecurity Assistant")
+st.title("STAR - AI Cybersecurity Assistant")
+st.write("Ask cybersecurity questions using RAG + Groq + Llama 3.1")
 
-GROQ_API_KEY = "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"   # Replace with your real API key
+# -----------------------------
+# API KEY
+# -----------------------------
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+if not GROQ_API_KEY:
+    st.error("GROQ_API_KEY not found. Add it in Streamlit secrets.")
+    st.stop()
+
 client = Groq(api_key=GROQ_API_KEY)
 
-# ============================================
-# LOAD EMBEDDING MODEL
-# ============================================
+# -----------------------------
+# EMBEDDING MODEL
+# -----------------------------
+@st.cache_resource
+def load_embedding_model():
+    return SentenceTransformer("all-MiniLM-L6-v2")
 
-embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+embedding_model = load_embedding_model()
 
-# ============================================
-# SAMPLE CYBERSECURITY KNOWLEDGE BASE
-# You can replace these with your own notes/files
-# ============================================
-
+# -----------------------------
+# KNOWLEDGE BASE
+# -----------------------------
 documents = [
     """
     Risk assessment is the process of identifying vulnerabilities,
@@ -58,20 +66,23 @@ documents = [
     """
 ]
 
-# ============================================
-# CREATE VECTOR DATABASE
-# ============================================
+# -----------------------------
+# VECTOR DATABASE
+# -----------------------------
+@st.cache_resource
+def build_vectorstore():
+    doc_embeddings = embedding_model.encode(documents)
 
-doc_embeddings = embedding_model.encode(documents)
+    dimension = doc_embeddings.shape[1]
+    index = faiss.IndexFlatL2(dimension)
+    index.add(np.array(doc_embeddings).astype("float32"))
+    return index
 
-dimension = doc_embeddings.shape[1]
-index = faiss.IndexFlatL2(dimension)
-index.add(np.array(doc_embeddings).astype("float32"))
+index = build_vectorstore()
 
-# ============================================
-# RETRIEVAL FUNCTION
-# ============================================
-
+# -----------------------------
+# RETRIEVAL
+# -----------------------------
 def retrieve_context(query, k=2):
     query_embedding = embedding_model.encode([query])
 
@@ -82,10 +93,9 @@ def retrieve_context(query, k=2):
     retrieved_docs = [documents[i] for i in indices[0]]
     return "\n".join(retrieved_docs)
 
-# ============================================
-# CHAT FUNCTION
-# ============================================
-
+# -----------------------------
+# CHATBOT
+# -----------------------------
 def cybersecurity_chatbot(user_question):
     context = retrieve_context(user_question)
 
@@ -105,31 +115,23 @@ Question:
     completion = client.chat.completions.create(
         model="llama-3.1-8b-instant",
         messages=[
-            {
-                "role": "user",
-                "content": prompt
-            }
+            {"role": "user", "content": prompt}
         ],
         temperature=0.7,
         max_tokens=1024
     )
 
-    answer = completion.choices[0].message.content
-    return answer
+    return completion.choices[0].message.content
 
-# ============================================
-# GRADIO FRONTEND
-# ============================================
+# -----------------------------
+# UI
+# -----------------------------
+question = st.text_input("Ask your cybersecurity question:")
 
-interface = gr.Interface(
-    fn=cybersecurity_chatbot,
-    inputs=gr.Textbox(
-        lines=3,
-        placeholder="Ask cybersecurity question here..."
-    ),
-    outputs=gr.Textbox(lines=10),
-    title="Cybersecurity RAG Chatbot",
-    description="Ask cybersecurity questions using Groq + Llama 3.1 + RAG"
-)
-
-interface.launch(share=True)
+if st.button("Submit"):
+    if question:
+        with st.spinner("Generating answer..."):
+            response = cybersecurity_chatbot(question)
+            st.success(response)
+    else:
+        st.warning("Please enter a question.")
