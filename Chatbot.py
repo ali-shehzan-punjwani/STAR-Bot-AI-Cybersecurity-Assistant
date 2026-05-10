@@ -1,10 +1,6 @@
 # ============================================
 # CYBERSECURITY RAG CHATBOT USING GROQ + GRADIO
 # ============================================
-
-# Install required libraries
-!pip install groq gradio sentence-transformers faiss-cpu pypdf
-
 # Imports
 import os
 import gradio as gr
